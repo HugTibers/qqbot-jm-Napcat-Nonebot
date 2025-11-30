@@ -11,7 +11,7 @@
 
 ### 特性
 - **权限**：
-  - `ALLOWED_GROUPS` 为空时不限制群，填入群号集合则仅允许这些群。
+  - `ALLOWED_GROUPS` 为空时不限制群，填入群号集合则仅允许特定群。
 - **上传**：
   - 上传超时自适应（文件越大超时越长，最高 300s）。
   - 遇到 `rich media transfer failed` / `retcode=1200` （大概率风控） 自动重传
@@ -26,3 +26,8 @@
 
 ### 详细部署教程
 完整安装与运行步骤请见 [教程.md](help/教程.md)。
+
+### Reference
+- NapCat: https://napneko.github.io/guide/napcat
+- JMComic: https://github.com/hect0x7/JMComic-Crawler-Python
+- Nonebot: https://github.com/nonebot/nonebot2
