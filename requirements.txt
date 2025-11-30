@@ -1,0 +1,5 @@
+nonebot2[fastapi,websockets,ujson]
+nonebot-adapter-onebot
+jmcomic
+Pillow
+img2pdf

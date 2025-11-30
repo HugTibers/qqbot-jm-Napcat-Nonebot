@@ -1,0 +1,68 @@
+# 开启jmcomic的日志输出，默认为true
+# 对日志有需求的可进一步参考文档 → https://jmcomic.readthedocs.io/en/latest/tutorial/11_log_custom/
+log: true
+
+# 配置客户端相关
+client:
+  # impl: 客户端实现类，不配置默认会使用JmModuleConfig.DEFAULT_CLIENT_IMPL
+  # 可配置:
+  #  html - 表示网页端
+  #  api - 表示APP端
+  # APP端不限ip兼容性好，网页端限制ip地区但效率高
+  impl: api
+
+  # domain: 禁漫域名配置，一般无需配置，jmcomic会根据上面的impl自动设置相应域名
+  # 该配置项需要和上面的impl结合使用，因为禁漫网页端和APP端使用的是不同域名，
+  # 所以配置是一个dict结构，key是impl的值，value是域名列表，表示这个impl走这些域名。
+  # 域名列表的使用顺序是：先用第一个域名，如果第一个域名重试n次失败，则换下一个域名重试，以此类推。
+  # 下面是示例：（注意下面这些域名可能会过时，不一定能用）
+  domain:
+    html:
+      - 18comic.org
+      - 18comic.vip
+    api:
+      - www.jmapiproxyxxx.vip
+
+  # retry_times: 请求失败重试次数，默认为5
+  retry_times: 5
+
+  # postman: 请求配置
+  postman:
+    meta_data:
+      # proxies: 代理配置，默认是 system，表示使用系统代理。
+      # 以下的写法都可以:
+      # proxies: null # 不使用代理
+      # proxies: clash
+      # proxies: v2ray
+      # proxies: 127.0.0.1:7890
+      # proxies:
+      #   http: 127.0.0.1:7890
+      #   https: 127.0.0.1:7890
+      proxies: null
+      cookies:
+        AVS: tocmf8o1itm1lhf69a7vgcclju # 这个值是乱打的，不能用
+
+# 下载配置
+download:
+  cache: true # 如果要下载的文件在磁盘上已存在，不用再下一遍了吧？默认为true
+  image:
+    decode: true # JM的原图是混淆过的，要不要还原？默认为true
+    suffix: .jpg # 把图片都转为.jpg格式，默认为null，表示不转换。
+  threading:
+    # image: 同时下载的图片数，默认是30张图
+    # 数值大，下得快，配置要求高，对禁漫压力大
+    # 数值小，下得慢，配置要求低，对禁漫压力小
+    # PS: 禁漫网页一次最多请求50张图
+    image: 10
+    # photo: 同时下载的章节数，不配置默认是cpu的线程数。例如8核16线程的cpu → 16.
+    photo: 4
+
+
+
+# 文件夹规则配置，决定图片文件存放在你的电脑上的哪个文件夹
+dir_rule:
+  # base_dir: 根目录。
+  # 此配置也支持引用环境变量，例如
+  # base_dir: ${JM_DIR}/下载文件夹/
+  base_dir: ./JM
+  rule: Bd / Ptitle
