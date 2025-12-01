@@ -17,6 +17,7 @@
   - 遇到 `rich media transfer failed` / `retcode=1200` （大概率风控） 自动重传
   - 可能的上传超时会提示“上传耗时较长”。
 - **清理**：上传后延迟删除下载目录（默认 `CLEANUP_DELAY_SECONDS=86400` 秒）。
+- **存储**：默认下载路径按专辑ID分隔（`option.yml` 中 `rule: Bd / Aid / Ptitle`），避免不同漫画章节同名时被混合。
 
 ### 主要配置（`plugins/jmcomic/service.py`）
 - `ALLOWED_GROUPS`: `{}` 表示不限制群；填 `{123456789, ...}` 仅允许特定群。
