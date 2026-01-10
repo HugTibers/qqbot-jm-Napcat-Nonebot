@@ -2,6 +2,7 @@ import asyncio
 import re
 import shutil
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List
@@ -59,7 +60,7 @@ def gather_images(album_dir: Path) -> List[Path]:
     return sorted(files, key=lambda p: p.as_posix())
 
 
-def merge_to_pdf(img_paths: List[Path], pdf_path: Path):
+def merge_to_pdf(img_paths: List[Path], pdf_path: Path, timing: dict[str, float] | None = None):
     """
     将图片列表合成为 PDF。
     """
@@ -69,10 +70,26 @@ def merge_to_pdf(img_paths: List[Path], pdf_path: Path):
     if img2pdf is None:
         raise RuntimeError("img2pdf 未安装，请先运行: pip install img2pdf")
 
+    direct_exts = {".jpg", ".jpeg", ".png"}
+    can_direct = all(p.suffix.lower() in direct_exts for p in img_paths)
+
+    if can_direct:
+        merge_start = time.perf_counter()
+        with open(pdf_path, "wb") as f:
+            f.write(img2pdf.convert([str(p) for p in img_paths]))
+        if timing is not None:
+            timing["合成PDF"] = time.perf_counter() - merge_start
+        return
+
+    # 回退路径：将非 JPG/PNG 的图片先转成 JPG 再封装
+    if Image is None:
+        raise RuntimeError("Pillow 未安装，无法转换非 JPG/PNG 图片，请先安装 pillow")
+
     tmp_dir = Path(tempfile.mkdtemp(prefix="jm_pdf_"))
     good_files: List[str] = []
     bad_files: List[str] = []
 
+    convert_start = time.perf_counter()
     for idx, p in enumerate(img_paths, start=1):
         try:
             with Image.open(p) as im:
@@ -81,6 +98,8 @@ def merge_to_pdf(img_paths: List[Path], pdf_path: Path):
                 good_files.append(str(out))
         except Exception:
             bad_files.append(p.name)
+    if timing is not None:
+        timing["转换格式"] = time.perf_counter() - convert_start
 
     if not good_files:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -91,8 +110,11 @@ def merge_to_pdf(img_paths: List[Path], pdf_path: Path):
         bad_log.write_text("\n".join(bad_files), encoding="utf-8")
 
     try:
+        merge_start = time.perf_counter()
         with open(pdf_path, "wb") as f:
             f.write(img2pdf.convert(good_files))
+        if timing is not None:
+            timing["合成PDF"] = time.perf_counter() - merge_start
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -105,11 +127,13 @@ def merge_long_images(
     max_width: int | None = None,  # 已弃用，保持兼容
     workers: int = 2,
     read_chunk: int = 5,
+    io_workers: int | None = None,
     quality: int = 80,
 ) -> tuple[List[Path], Path]:
     """
     将图片分批合成长图，返回生成的长图路径列表和所在目录。
     仅合并长宽一致的图片；以出现次数最多的尺寸为主尺寸，仅保留主尺寸页面，封面（第一张）例外；后续尺寸不同的（疑似广告）直接丢弃。
+    read_chunk/io_workers 控制单次并行读取数量，避免一次性把所有图片读入内存。
     """
     if Image is None:
         raise RuntimeError("Pillow 未安装，无法生成长图，请先安装 pillow")
@@ -124,16 +148,32 @@ def merge_long_images(
         total_h = height * len(batch_paths)
         canvas = Image.new("RGB", (width, total_h), (255, 255, 255))
 
+        def _load_and_convert(path: Path):
+            try:
+                with Image.open(path) as im:
+                    # convert 返回新的对象，确保文件句柄及时关闭
+                    converted = im.convert("RGB")
+                return converted
+            except Exception:
+                return None
+
+        load_workers = max(1, min(read_chunk, io_workers or read_chunk))
+        load_pool = ThreadPoolExecutor(max_workers=load_workers)
         y = 0
-        for i in range(0, len(batch_paths), max(1, read_chunk)):
-            chunk = batch_paths[i : i + max(1, read_chunk)]
-            for path in chunk:
-                try:
-                    with Image.open(path) as im:
-                        canvas.paste(im, (0, y))
-                        y += im.height
-                except Exception:
-                    y += height
+        try:
+            chunk_size = max(1, read_chunk)
+            for i in range(0, len(batch_paths), chunk_size):
+                chunk = batch_paths[i : i + chunk_size]
+                # 并行读取 + 转换，内存占用被 chunk_size 限制
+                imgs = list(load_pool.map(_load_and_convert, chunk))
+                for img in imgs:
+                    if img is None:
+                        y += height
+                        continue
+                    canvas.paste(img, (0, y))
+                    y += img.height
+        finally:
+            load_pool.shutdown(wait=True)
 
         out_path = output_dir / f"long_{index:03d}.jpg"
         canvas.save(out_path, format="JPEG", quality=quality)
