@@ -96,8 +96,6 @@ async def _(bot: Bot, event: MessageEvent):
 
 @toggle_cmd.handle()
 async def _(bot: Bot, event: MessageEvent):
-    if should_block_event(bot, event):
-        await toggle_cmd.finish()
     text = event.get_plaintext().strip().lower()
     if "开启" in text or "start" in text:
         jm_service.ENABLED = True
