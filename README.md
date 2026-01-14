@@ -3,6 +3,7 @@
 基于 NapCat + NoneBot2 的 QQ 机器人，支持多个插件。
 
 ![alt text](help/jmcomic/image.png)
+![pixiv](help/pixiv/演示.png)
 
 ## 插件列表
 
