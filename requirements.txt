@@ -1,5 +1,13 @@
+# 核心框架
 nonebot2[fastapi,websockets,ujson]
 nonebot-adapter-onebot
+
+# jmcomic 插件依赖
 jmcomic
 Pillow
 img2pdf
+
+# pixiv 插件依赖
+pixivpy3
+gppt
+playwright
