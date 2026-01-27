@@ -8,14 +8,12 @@ Pixiv 插件 - QQ Bot
 """
 
 import asyncio
-import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from nonebot import on_regex
-from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment
-from nonebot.exception import FinishedException
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
 
 from plugins.plugin_switcher import is_plugin_enabled
 
@@ -24,7 +22,7 @@ from .service import (
     pixiv_download,
     pixiv_ranking,
     pixiv_detail,
-    get_download_path,
+    pixiv_build_pdf,
 )
 
 # 搜索结果缓存 (user_key -> list of illusts)
@@ -158,17 +156,24 @@ async def _handle_download_quick(bot: Bot, event: MessageEvent, illust_id: str):
         await px_quick_cmd.finish(Message(f"❌ 下载失败: {result['error']}"))
         return
     
-    # 发送图片
-    for img_path in result["images"][:9]:
-        try:
-            img_seg = MessageSegment.image(f"file://{img_path}")
-            await bot.send(event, img_seg)
-        except Exception as e:
-            await bot.send(event, f"发送图片失败: {e}")
-    
-    msg = f"✅ 下载完成: {result['title']}\n共 {result['count']} 张图片"
-    if result["count"] > 9:
-        msg += f"\n（只显示前 9 张）"
+    try:
+        pdf_path = await asyncio.to_thread(
+            pixiv_build_pdf,
+            illust_id,
+            result["title"],
+            result["images"],
+        )
+    except Exception as e:
+        await px_quick_cmd.finish(Message(f"❌ PDF 合成失败: {e}"))
+        return
+
+    try:
+        await _upload_pdf(bot, event, pdf_path)
+    except Exception as e:
+        await px_quick_cmd.finish(Message(f"❌ PDF 上传失败: {e}"))
+        return
+
+    msg = f"✅ 下载完成并已上传 PDF: {result['title']}\n共 {result['count']} 张图片"
     await px_quick_cmd.finish(Message(msg))
 
 
@@ -237,17 +242,24 @@ async def _handle_download(bot: Bot, event: MessageEvent, id_or_idx: str):
         await pixiv_cmd.finish(Message(f"❌ 下载失败: {result['error']}"))
         return
     
-    # 发送图片
-    for img_path in result["images"][:9]:  # 最多发 9 张
-        try:
-            img_seg = MessageSegment.image(f"file://{img_path}")
-            await bot.send(event, img_seg)
-        except Exception as e:
-            await bot.send(event, f"发送图片失败: {e}")
-    
-    msg = f"✅ 下载完成: {result['title']}\n共 {result['count']} 张图片"
-    if result["count"] > 9:
-        msg += f"\n（只显示前 9 张，全部图片保存在: {result['path']}）"
+    try:
+        pdf_path = await asyncio.to_thread(
+            pixiv_build_pdf,
+            illust_id,
+            result["title"],
+            result["images"],
+        )
+    except Exception as e:
+        await pixiv_cmd.finish(Message(f"❌ PDF 合成失败: {e}"))
+        return
+
+    try:
+        await _upload_pdf(bot, event, pdf_path)
+    except Exception as e:
+        await pixiv_cmd.finish(Message(f"❌ PDF 上传失败: {e}"))
+        return
+
+    msg = f"✅ 下载完成并已上传 PDF: {result['title']}\n共 {result['count']} 张图片"
     await pixiv_cmd.finish(Message(msg))
 
 
@@ -303,3 +315,10 @@ ID: {illust.id}
 💡 输入 pixiv 下载 {illust.id} 下载此作品"""
     
     await pixiv_cmd.finish(Message(info))
+
+
+async def _upload_pdf(bot: Bot, event: MessageEvent, pdf_path: Path):
+    if event.message_type == "group":
+        await bot.call_api("upload_group_file", group_id=event.group_id, file=str(pdf_path), name=pdf_path.name)
+    else:
+        await bot.call_api("upload_private_file", user_id=event.user_id, file=str(pdf_path), name=pdf_path.name)

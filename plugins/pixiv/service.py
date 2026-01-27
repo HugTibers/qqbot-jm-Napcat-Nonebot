@@ -2,9 +2,19 @@
 Pixiv 服务层 - API 调用封装
 """
 
-import os
+import re
 from pathlib import Path
 from typing import List, Optional
+
+try:
+    import img2pdf
+except Exception:  # pragma: no cover - 运行时缺依赖再提示
+    img2pdf = None
+
+try:
+    from PIL import Image
+except Exception:  # pragma: no cover - 运行时缺依赖再提示
+    Image = None
 
 from pixivpy3 import AppPixivAPI
 
@@ -116,6 +126,55 @@ def get_download_path(illust_id: str) -> Path:
     return DOWNLOAD_DIR / str(illust_id)
 
 
+def _sanitize_filename(name: str, fallback: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]', "_", (name or "").strip())
+    cleaned = cleaned.strip(". ")
+    return cleaned or fallback
+
+
+def pixiv_build_pdf(illust_id: str, title: str, image_paths: List[str]) -> Path:
+    """
+    将下载的图片合成为 PDF，并返回 PDF 路径。
+    """
+    if not image_paths:
+        raise RuntimeError("没有可合成 PDF 的图片")
+
+    img_paths = [Path(p) for p in image_paths if Path(p).exists()]
+    if not img_paths:
+        raise RuntimeError("图片路径不存在，无法生成 PDF")
+
+    img_paths = sorted(img_paths, key=lambda p: p.name)
+    save_dir = get_download_path(illust_id)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    base_name = _sanitize_filename(f"{title}_{illust_id}", f"pixiv_{illust_id}")
+    pdf_path = save_dir / f"{base_name}.pdf"
+
+    if img2pdf is not None:
+        try:
+            with open(pdf_path, "wb") as f:
+                f.write(img2pdf.convert([str(p) for p in img_paths]))
+            return pdf_path
+        except Exception:
+            # 回退到 Pillow
+            pass
+
+    if Image is None:
+        raise RuntimeError("缺少 img2pdf 或 Pillow，无法合成 PDF")
+
+    images = []
+    for p in img_paths:
+        with Image.open(p) as im:
+            images.append(im.convert("RGB"))
+
+    if not images:
+        raise RuntimeError("图片读取失败，无法生成 PDF")
+
+    base = images[0]
+    base.save(pdf_path, "PDF", save_all=True, append_images=images[1:])
+    return pdf_path
+
+
 def pixiv_download(illust_id: str) -> dict:
     """
     下载作品
@@ -184,4 +243,3 @@ def pixiv_download(illust_id: str) -> dict:
     
     except Exception as e:
         return {"success": False, "error": str(e)}
-
